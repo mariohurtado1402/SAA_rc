@@ -1,33 +1,12 @@
 """
-Control a servo on an Arduino Nano over serial.
+Control a steering servo on an Arduino Nano over USB serial.
 
-The Nano is running this sketch:
+The Nano runs firmware/servo/src/main.cpp. Servo.write() expects an angle in
+degrees (0-180). parseInt() on the Nano consumes digits until it hits a
+non-digit, so each value is sent followed by a newline as a terminator.
 
-    #include <Servo.h>
-    Servo myservo;
-    void setup() {
-      Serial.begin(115200);
-      Serial.setTimeout(10);
-      myservo.attach(5);
-    }
-    void loop() {
-      if (Serial.available() > 0) {
-        int value = Serial.parseInt();
-        myservo.write(value);
-      }
-    }
-
-Servo.write() expects an angle 0-180 degrees. parseInt() consumes digits until
-it hits a non-digit, so every value is sent followed by a newline as a
-terminator.
-
-Install:
-    pip install pyserial
-
-Run:
-    python3 servo_serial.py --port COM3           # Windows
-    python3 servo_serial.py --port /dev/ttyUSB0   # Linux (Nano clones)
-    python3 servo_serial.py --port /dev/ttyACM0   # Linux (genuine Nano)
+Run as a standalone interactive tester:
+    python3 -m helpers.servo_serial --port /dev/ttyUSB0
 """
 
 import argparse
@@ -50,18 +29,18 @@ class SerialServo:
 
     def write_angle(self, angle: int):
         angle = max(ANGLE_MIN, min(ANGLE_MAX, int(angle)))
-        # Use \r\n to be explicitly clear to the serial buffer
-        payload = f"{angle}\n".encode("ascii")
-        self.ser.write(payload)
-        self.ser.flush() 
+        self.ser.write(f"{angle}\n".encode("ascii"))
+        self.ser.flush()
         return angle
+
+    def center(self):
+        return self.write_angle(ANGLE_CENTER)
 
     def close(self):
         self.ser.close()
 
 
 def _read_key() -> str:
-    """Read one keypress without waiting for Enter, cross-platform."""
     if sys.platform == "win32":
         import msvcrt
         ch = msvcrt.getch()
@@ -116,7 +95,7 @@ def main():
             angle = servo.write_angle(angle)
             print(f"angle = {angle}")
     finally:
-        servo.write_angle(ANGLE_CENTER)
+        servo.center()
         servo.close()
         print("Closed.")
 
