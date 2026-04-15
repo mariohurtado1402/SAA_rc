@@ -50,10 +50,10 @@ class SerialServo:
 
     def write_angle(self, angle: int):
         angle = max(ANGLE_MIN, min(ANGLE_MAX, int(angle)))
-        # Newline terminates parseInt() promptly instead of waiting for the
-        # 10 ms Serial.setTimeout() on the Nano side.
-        self.ser.write(f"{angle}\n".encode("ascii"))
-        self.ser.flush()
+        # Use \r\n to be explicitly clear to the serial buffer
+        payload = f"{angle}\n".encode("ascii")
+        self.ser.write(payload)
+        self.ser.flush() 
         return angle
 
     def close(self):
