@@ -48,9 +48,9 @@ def _read_key() -> str:
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--esc-port", required=True,
+    parser.add_argument("--esc-port", default=None,
                         help="Serial port of the ESC Nano (e.g. /dev/ttyUSB0)")
-    parser.add_argument("--servo-port", required=True,
+    parser.add_argument("--servo-port", default=None,
                         help="Serial port of the servo Nano (e.g. /dev/ttyUSB1)")
     parser.add_argument("--baud", type=int, default=115200)
     parser.add_argument("--throttle-step", type=float, default=5.0)
@@ -58,32 +58,42 @@ def main():
                         help="Degrees per a/d press")
     args = parser.parse_args()
 
-    esc = SerialESC(args.esc_port, args.baud)
-    servo = SerialServo(args.servo_port, args.baud)
+    if not args.esc_port and not args.servo_port:
+        parser.error("provide at least one of --esc-port or --servo-port")
+
+    esc = SerialESC(args.esc_port, args.baud) if args.esc_port else None
+    servo = SerialServo(args.servo_port, args.baud) if args.servo_port else None
 
     throttle = 0.0
     angle = ANGLE_CENTER
 
     try:
-        esc.stop()
-        servo.write_angle(angle)
-        print(
-            "Controls:\n"
-            f"  w / s : throttle  +/- {args.throttle_step:g} %\n"
-            f"  a / d : steering  -/+ {args.steering_step} deg "
-            "(0 = left, 90 = center, 180 = right)\n"
-            "  space : stop throttle + center steering\n"
-            "  q     : quit\n"
-        )
+        if esc:
+            esc.stop()
+        if servo:
+            servo.write_angle(angle)
+
+        controls = []
+        if esc:
+            controls.append(f"  w / s : throttle  +/- {args.throttle_step:g} %")
+        if servo:
+            controls.append(
+                f"  a / d : steering  -/+ {args.steering_step} deg "
+                "(0 = left, 90 = center, 180 = right)"
+            )
+        controls.append("  space : stop / center")
+        controls.append("  q     : quit")
+        print("Controls:\n" + "\n".join(controls) + "\n")
+
         while True:
             key = _read_key()
-            if key == "w":
+            if key == "w" and esc:
                 throttle += args.throttle_step
-            elif key == "s":
+            elif key == "s" and esc:
                 throttle -= args.throttle_step
-            elif key == "a":
+            elif key == "a" and servo:
                 angle -= args.steering_step
-            elif key == "d":
+            elif key == "d" and servo:
                 angle += args.steering_step
             elif key == " ":
                 throttle = 0.0
@@ -95,17 +105,24 @@ def main():
 
             throttle = max(-100.0, min(100.0, throttle))
             angle = max(ANGLE_MIN, min(ANGLE_MAX, angle))
-            pulse = esc.set_throttle(throttle)
-            angle = servo.write_angle(angle)
-            print(
-                f"throttle = {throttle:+.0f}% ({pulse} us)   "
-                f"steering = {angle} deg"
-            )
+
+            pulse = esc.set_throttle(throttle) if esc else None
+            if servo:
+                angle = servo.write_angle(angle)
+
+            parts = []
+            if esc:
+                parts.append(f"throttle = {throttle:+.0f}% ({pulse} us)")
+            if servo:
+                parts.append(f"steering = {angle} deg")
+            print("   ".join(parts))
     finally:
-        esc.stop()
-        servo.center()
-        esc.close()
-        servo.close()
+        if esc:
+            esc.stop()
+            esc.close()
+        if servo:
+            servo.center()
+            servo.close()
         print("Stopped.")
 
 
