@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>SAA_rc HMI</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <header>
+    <h1>SAA_rc</h1>
+    <div class="modes">
+      <button class="mode" data-mode="MANUAL">MANUAL</button>
+      <button class="mode" data-mode="LKA">LKA</button>
+      <button class="mode" data-mode="RCCA">RCCA</button>
+    </div>
+    <button id="stop">STOP</button>
+  </header>
+
+  <main class="grid">
+    <section class="tile" id="tile-lights">
+      <h2>Lights</h2>
+      <div class="big">
+        <span id="ldr-dot" class="dot"></span>
+        <span id="headlight-label">OFF</span>
+      </div>
+      <p>LDR: <span id="ldr-value">—</span></p>
+      <div class="row">
+        <label>ON ≤ <input id="ldr-on" type="number" min="0" max="1023"></label>
+        <label>OFF ≥ <input id="ldr-off" type="number" min="0" max="1023"></label>
+      </div>
+    </section>
+
+    <section class="tile" id="tile-thrust">
+      <h2>Thrust &amp; Steering</h2>
+      <div class="row">
+        <div class="col">
+          <p>Throttle: <strong id="thr-pct">0</strong>%
+            <span class="muted">(<span id="thr-us">1500</span>µs)</span></p>
+          <input id="throttle" type="range" min="-100" max="100" step="1" value="0">
+        </div>
+        <div class="col">
+          <p>Steering: <strong id="str-deg">90</strong>°</p>
+          <input id="steer" type="range" min="60" max="140" step="1" value="100">
+        </div>
+      </div>
+      <p class="muted">Keys: W/S throttle · A/D steer · Space stop+center</p>
+    </section>
+
+    <section class="tile" id="tile-camera">
+      <h2>Camera (LKA)</h2>
+      <img id="video" src="/video.mjpg" alt="camera">
+      <p>Bias: <span id="lane-bias">—</span> · Diff: <span id="lane-diff">—</span> · Action: <span id="lane-action">—</span></p>
+      <label>LKA gain (°): <input id="lka-gain" type="number" min="0" max="60" step="1"></label>
+    </section>
+
+    <section class="tile" id="tile-prox">
+      <h2>Ultrasonic</h2>
+      <div class="bar"><span class="lbl">Front</span>     <progress id="bar-front"      max="200"></progress> <span id="d-front">—</span></div>
+      <div class="bar"><span class="lbl">Rear L</span>    <progress id="bar-rear_left"  max="200"></progress> <span id="d-rear_left">—</span></div>
+      <div class="bar"><span class="lbl">Rear R</span>    <progress id="bar-rear_right" max="200"></progress> <span id="d-rear_right">—</span></div>
+      <p class="row">
+        <label>RCCA brake &lt; <input id="rcca-th" type="number" min="0" max="200" step="1"> cm</label>
+        <span id="rcca-flag" class="alert hidden">RCCA BRAKE</span>
+      </p>
+    </section>
+
+    <section class="tile" id="tile-cal">
+      <h2>Throttle calibration</h2>
+      <table class="cal">
+        <tr><th></th><th>Forward</th><th>Reverse</th></tr>
+        <tr><td>Min µs</td>
+            <td><input id="forward_min_us" type="number"></td>
+            <td><input id="reverse_min_us" type="number"></td></tr>
+        <tr><td>Max µs</td>
+            <td><input id="forward_max_us" type="number"></td>
+            <td><input id="reverse_max_us" type="number"></td></tr>
+        <tr><td>Kick µs</td>
+            <td><input id="forward_kick_us" type="number"></td>
+            <td><input id="reverse_kick_us" type="number"></td></tr>
+        <tr><td>Kick ms</td>
+            <td><input id="forward_kick_ms" type="number"></td>
+            <td><input id="reverse_kick_ms" type="number"></td></tr>
+      </table>
+      <button id="save-cal">Save calibration</button>
+      <p class="muted">Saved to <code>config.json</code> on the host.</p>
+    </section>
+  </main>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>

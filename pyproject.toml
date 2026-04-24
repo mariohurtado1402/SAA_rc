@@ -8,4 +8,6 @@ dependencies = [
     "pyserial>=3.5",
     "opencv-python>=4.10",
     "numpy>=1.26",
+    "fastapi>=0.110",
+    "uvicorn[standard]>=0.27",
 ]

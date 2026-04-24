@@ -22,6 +22,8 @@ import time
 
 import serial
 
+from .calibration import ThrottleCalibration
+
 PULSE_MIN = 1000        # full reverse
 PULSE_NEUTRAL = 1500    # stop / idle
 PULSE_MAX = 2000        # full forward
@@ -54,6 +56,53 @@ class SerialESC:
 
     def close(self):
         self.ser.close()
+
+
+class ThrottleController:
+    """Apply a kickstart pulse when leaving neutral, then settle on a
+    calibrated target. Wraps SerialESC; the underlying helper stays
+    untouched so the standalone tester still works.
+    """
+
+    def __init__(self, esc: SerialESC, calibration: ThrottleCalibration):
+        self.esc = esc
+        self.cal = calibration
+        self._last_percent: float = 0.0
+        self._kick_until: float = 0.0  # monotonic seconds
+
+    def update_calibration(self, calibration: ThrottleCalibration) -> None:
+        self.cal = calibration
+
+    def set_percent(self, percent: float) -> int:
+        """Drive the ESC to a calibrated target. Returns the pulse actually
+        sent. A short kickstart fires on transitions from neutral so the
+        wheels actually start spinning."""
+        percent = max(-100.0, min(100.0, float(percent)))
+        now = time.monotonic()
+
+        leaving_neutral = abs(self._last_percent) < 1.0 and abs(percent) >= 1.0
+        if leaving_neutral:
+            kick_us, kick_ms = self.cal.kick_for(percent)
+            self._kick_until = now + (kick_ms / 1000.0)
+            self._last_percent = percent
+            return self.esc.write_pulse(kick_us)
+
+        if now < self._kick_until and (
+            (percent > 0 and self._last_percent > 0)
+            or (percent < 0 and self._last_percent < 0)
+        ):
+            # still inside the kick window in the same direction; hold the kick
+            kick_us, _ = self.cal.kick_for(percent)
+            self._last_percent = percent
+            return self.esc.write_pulse(kick_us)
+
+        self._last_percent = percent
+        return self.esc.write_pulse(self.cal.percent_to_us(percent))
+
+    def emergency_stop(self) -> int:
+        self._last_percent = 0.0
+        self._kick_until = 0.0
+        return self.esc.stop()
 
 
 def _read_key() -> str:

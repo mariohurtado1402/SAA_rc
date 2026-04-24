@@ -1,128 +1,194 @@
 """
-Command multiplexer: WASD keyboard -> two Arduino Nanos over USB serial.
+SAA_rc command multiplexer + ADAS HMI.
 
-    w / s  -> throttle via the ESC Nano     (firmware/esc/src/main.cpp)
-    a / d  -> steering via the servo Nano   (firmware/servo/src/main.cpp)
-    space  -> stop + center
-    q      -> quit (stops ESC, centers servo, closes ports)
+Wires every subsystem (ESC, servo, LDR, proximity, camera) into a single
+process that exposes a browser-based HMI on port 8000 by default.
 
-The ESC Nano arms automatically at boot (3 s neutral pulse).
+    uv run python cmd_mux.py \
+        --esc-port COM3 --servo-port COM4 \
+        --ldr-port COM5 --proximity-port COM6 \
+        --camera 0
 
-Run:
-    uv run cmd_mux.py -- \
-        --esc-port   /dev/ttyUSB0 \
-        --servo-port /dev/ttyUSB1
+Any --*-port flag may be omitted; that subsystem will be disabled and the
+HMI will grey out the corresponding tile. CLI flags override config.json.
 """
 
 import argparse
-import sys
+import json
+import threading
+import time
+from pathlib import Path
 
+import cv2
+import uvicorn
+
+from adas import ControlLoop, Mode, SystemState
 from helpers import (
-    SerialServo,
+    LaneVision,
     SerialESC,
-    ANGLE_CENTER,
-    ANGLE_MIN,
-    ANGLE_MAX,
+    SerialLDR,
+    SerialProximity,
+    SerialServo,
+    ThrottleCalibration,
+    ThrottleController,
 )
+from hmi import FrameBuffer, build_app
+
+CONFIG_PATH = Path(__file__).parent / "config.json"
 
 
-def _read_key() -> str:
-    if sys.platform == "win32":
-        import msvcrt
-        ch = msvcrt.getch()
+def parse_args():
+    p = argparse.ArgumentParser()
+    p.add_argument("--esc-port")
+    p.add_argument("--servo-port")
+    p.add_argument("--ldr-port")
+    p.add_argument("--proximity-port")
+    p.add_argument("--camera", type=int)
+    p.add_argument("--host", default="0.0.0.0")
+    p.add_argument("--port", type=int, default=8000)
+    p.add_argument("--config", default=str(CONFIG_PATH))
+    return p.parse_args()
+
+
+def load_config(path: Path) -> dict:
+    if path.exists():
         try:
-            return ch.decode("ascii", errors="ignore")
-        except Exception:
-            return ""
-    else:
-        import termios
-        import tty
-        fd = sys.stdin.fileno()
-        old = termios.tcgetattr(fd)
-        try:
-            tty.setcbreak(fd)
-            return sys.stdin.read(1)
-        finally:
-            termios.tcsetattr(fd, termios.TCSADRAIN, old)
+            return json.loads(path.read_text())
+        except json.JSONDecodeError:
+            print(f"warning: {path} is not valid JSON, ignoring")
+    return {}
+
+
+def merge_ports(args, cfg: dict) -> dict:
+    cfg_ports = cfg.get("ports", {}) or {}
+    return {
+        "esc": args.esc_port or cfg_ports.get("esc"),
+        "servo": args.servo_port or cfg_ports.get("servo"),
+        "ldr": args.ldr_port or cfg_ports.get("ldr"),
+        "proximity": args.proximity_port or cfg_ports.get("proximity"),
+        "camera": args.camera if args.camera is not None else cfg_ports.get("camera", 0),
+    }
+
+
+def camera_thread(vision: LaneVision, state: SystemState, frames: FrameBuffer,
+                  stop: threading.Event):
+    while not stop.is_set():
+        result = vision.read()
+        if result is None:
+            time.sleep(0.05)
+            continue
+        with state.lock:
+            state.lane_diff = result.diff
+            state.lane_bias = result.bias
+            state.lane_action = result.action
+        ok, jpeg = cv2.imencode(".jpg", result.annotated,
+                                [int(cv2.IMWRITE_JPEG_QUALITY), 70])
+        if ok:
+            frames.update(jpeg.tobytes())
 
 
 def main():
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--esc-port", default=None,
-                        help="Serial port of the ESC Nano (e.g. /dev/ttyUSB0)")
-    parser.add_argument("--servo-port", default=None,
-                        help="Serial port of the servo Nano (e.g. /dev/ttyUSB1)")
-    parser.add_argument("--baud", type=int, default=115200)
-    parser.add_argument("--throttle-step", type=float, default=5.0)
-    parser.add_argument("--steering-step", type=int, default=10,
-                        help="Degrees per a/d press")
-    args = parser.parse_args()
+    args = parse_args()
+    cfg_path = Path(args.config)
+    cfg = load_config(cfg_path)
+    ports = merge_ports(args, cfg)
 
-    if not args.esc_port and not args.servo_port:
-        parser.error("provide at least one of --esc-port or --servo-port")
+    state = SystemState()
+    state.calibration = ThrottleCalibration.from_dict(cfg.get("calibration", {})) \
+        if cfg.get("calibration") else ThrottleCalibration()
+    state.rcca_threshold_cm = float(cfg.get("rcca_threshold_cm", 25.0))
+    ldr_th = cfg.get("ldr_thresholds", {}) or {}
+    state.ldr_on_threshold = int(ldr_th.get("on", 400))
+    state.ldr_off_threshold = int(ldr_th.get("off", 500))
+    state.lka_gain_deg = float(cfg.get("lka_gain", 30.0))
+    state.proximity_labels = list(cfg.get("proximity_labels",
+                                          ["front", "rear_left", "rear_right"]))
+    state.distances = {label: 0.0 for label in state.proximity_labels}
 
-    esc = SerialESC(args.esc_port, args.baud) if args.esc_port else None
-    servo = SerialServo(args.servo_port, args.baud) if args.servo_port else None
-
-    throttle = 0.0
-    angle = ANGLE_CENTER
+    # ---- Bring up subsystems ----
+    esc = throttle = servo = ldr = proximity = vision = None
+    cam_thread = stop_evt = None
+    frames = FrameBuffer()
 
     try:
-        if esc:
-            esc.stop()
-        if servo:
-            servo.write_angle(angle)
+        if ports["esc"]:
+            print(f"Opening ESC on {ports['esc']} ...")
+            esc = SerialESC(ports["esc"])
+            throttle = ThrottleController(esc, state.calibration)
+            state.has_esc = True
 
-        controls = []
-        if esc:
-            controls.append(f"  w / s : throttle  +/- {args.throttle_step:g} %")
-        if servo:
-            controls.append(
-                f"  a / d : steering  -/+ {args.steering_step} deg "
-                "(0 = left, 90 = center, 180 = right)"
-            )
-        controls.append("  space : stop / center")
-        controls.append("  q     : quit")
-        print("Controls:\n" + "\n".join(controls) + "\n")
+        if ports["servo"]:
+            print(f"Opening servo on {ports['servo']} ...")
+            servo = SerialServo(ports["servo"])
+            state.has_servo = True
 
-        while True:
-            key = _read_key()
-            if key == "w" and esc:
-                throttle += args.throttle_step
-            elif key == "s" and esc:
-                throttle -= args.throttle_step
-            elif key == "a" and servo:
-                angle -= args.steering_step
-            elif key == "d" and servo:
-                angle += args.steering_step
-            elif key == " ":
-                throttle = 0.0
-                angle = ANGLE_CENTER
-            elif key == "q":
-                break
-            else:
-                continue
+        if ports["ldr"]:
+            print(f"Opening LDR on {ports['ldr']} ...")
+            def on_ldr(value: int):
+                with state.lock:
+                    state.ldr_value = value
+            ldr = SerialLDR(ports["ldr"], on_value=on_ldr)
+            state.has_ldr = True
 
-            throttle = max(-100.0, min(100.0, throttle))
-            angle = max(ANGLE_MIN, min(ANGLE_MAX, angle))
+        if ports["proximity"]:
+            print(f"Opening proximity on {ports['proximity']} ...")
+            labels = state.proximity_labels
+            def on_prox(reading):
+                with state.lock:
+                    for i, label in enumerate(labels):
+                        state.distances[label] = reading[i]
+            proximity = SerialProximity(ports["proximity"], on_reading=on_prox)
+            state.has_proximity = True
 
-            pulse = esc.set_throttle(throttle) if esc else None
-            if servo:
-                angle = servo.write_angle(angle)
+        if ports["camera"] is not None:
+            try:
+                print(f"Opening camera index {ports['camera']} ...")
+                vision = LaneVision(ports["camera"])
+                state.has_camera = True
+                stop_evt = threading.Event()
+                cam_thread = threading.Thread(
+                    target=camera_thread, args=(vision, state, frames, stop_evt),
+                    daemon=True,
+                )
+                cam_thread.start()
+            except RuntimeError as e:
+                print(f"warning: camera unavailable: {e}")
 
-            parts = []
-            if esc:
-                parts.append(f"throttle = {throttle:+.0f}% ({pulse} us)")
-            if servo:
-                parts.append(f"steering = {angle} deg")
-            print("   ".join(parts))
+        # ---- Sync calibration changes back into the throttle controller ----
+        # The HMI replaces state.calibration on save; reflect that into the
+        # live controller too. Cheap to do every 200 ms.
+        def cal_sync():
+            while True:
+                time.sleep(0.2)
+                if throttle:
+                    with state.lock:
+                        cal = state.calibration
+                    throttle.update_calibration(cal)
+        threading.Thread(target=cal_sync, daemon=True).start()
+
+        # ---- Control loop ----
+        loop = ControlLoop(state, throttle, servo, ldr=ldr)
+        loop.start()
+
+        # ---- Web app ----
+        app = build_app(state, frames, cfg_path)
+        print(f"\nHMI: http://{args.host}:{args.port}/  (mode = {state.mode.value})\n")
+        uvicorn.run(app, host=args.host, port=args.port, log_level="info")
+
     finally:
-        if esc:
-            esc.stop()
-            esc.close()
-        if servo:
-            servo.center()
-            servo.close()
+        print("\nShutting down ...")
+        if stop_evt:
+            stop_evt.set()
+        try:
+            loop.stop()
+        except Exception:
+            pass
+        for closer in (vision, proximity, ldr, servo, esc):
+            try:
+                if closer is not None:
+                    closer.close() if hasattr(closer, "close") else None
+            except Exception:
+                pass
         print("Stopped.")
 
 
