@@ -1,97 +1,83 @@
 #include <Arduino.h>
+#include <NewPing.h>
 
-// ── Threshold ────────────────────────────────────────────────────────
 const float THRESHOLD_CM = 20.0;
+const int SONAR_NUM = 3;
+const int MAX_DISTANCE = 200;
 
-// ── HC-SR04 pins ─────────────────────────────────────────────────────
-const int TRIG1 = 2;  const int ECHO1 = 3;
-const int TRIG2 = 4;  const int ECHO2 = 5;
-const int TRIG3 = 6;  const int ECHO3 = 7;
-
-// ── Output pins ──────────────────────────────────────────────────────
-const int LED1   = 8;
-const int LED2   = 9;
+const int LED1 = 8;
+const int LED2 = 9;
 const int BUZZER = 10;
 
-// ── Buzzer pulse timing (ms) ─────────────────────────────────────────
-const unsigned long BUZZ_ON_MS  = 100;
-const unsigned long BUZZ_OFF_MS = 100;
-
-// ── Sensor read interval (ms) ────────────────────────────────────────
-const unsigned long READ_INTERVAL_MS = 100;
-
-// ── State ────────────────────────────────────────────────────────────
-bool buzzerOn = false;
+const unsigned long BUZZ_PULSE = 100;
 unsigned long lastBuzzToggle = 0;
-unsigned long lastRead = 0;
+bool buzzerOn = false;
 
-// Read distance from one HC-SR04 in centimeters.
-// Returns -1.0 if no echo (out of range / sensor error).
-float readDistanceCM(int trigPin, int echoPin) {
-  digitalWrite(trigPin, LOW);
-  delayMicroseconds(2);
-  digitalWrite(trigPin, HIGH);
-  delayMicroseconds(10);
-  digitalWrite(trigPin, LOW);
+NewPing sonar[SONAR_NUM] = {
+  NewPing(2, 3, MAX_DISTANCE),
+  NewPing(4, 5, MAX_DISTANCE),
+  NewPing(6, 7, MAX_DISTANCE)
+};
 
-  unsigned long duration = pulseIn(echoPin, HIGH, 30000);  // 30 ms timeout
-  if (duration == 0) return -1.0;
-  return duration / 58.0;
+float distances[SONAR_NUM];
+unsigned long pingTimer[SONAR_NUM];
+int currentSensor = 0;
+
+void echoCheck() {
+  if (sonar[currentSensor].check_timer()) {
+    distances[currentSensor] = sonar[currentSensor].ping_result / US_ROUNDTRIP_CM;
+  }
 }
 
 void setup() {
   Serial.begin(115200);
-
-  pinMode(TRIG1, OUTPUT);  pinMode(ECHO1, INPUT);
-  pinMode(TRIG2, OUTPUT);  pinMode(ECHO2, INPUT);
-  pinMode(TRIG3, OUTPUT);  pinMode(ECHO3, INPUT);
-
-  pinMode(LED1,   OUTPUT);
-  pinMode(LED2,   OUTPUT);
+  pinMode(LED1, OUTPUT);
+  pinMode(LED2, OUTPUT);
   pinMode(BUZZER, OUTPUT);
 
-  digitalWrite(LED1,   LOW);
-  digitalWrite(LED2,   LOW);
-  digitalWrite(BUZZER, LOW);
+  pingTimer[0] = millis() + 75;
+  for (int i = 1; i < SONAR_NUM; i++) {
+    pingTimer[i] = pingTimer[i - 1] + 33;
+  }
 }
 
 void loop() {
-  unsigned long now = millis();
+  for (int i = 0; i < SONAR_NUM; i++) {
+    if (millis() >= pingTimer[i]) {
+      pingTimer[i] += 33 * SONAR_NUM;
+      sonar[currentSensor].timer_stop();
+      currentSensor = i;
+      distances[currentSensor] = 0;
+      sonar[currentSensor].ping_timer(echoCheck);
+    }
+  }
 
-  if (now - lastRead < READ_INTERVAL_MS) return;
-  lastRead = now;
+  bool alert = false;
+  for (int i = 0; i < SONAR_NUM; i++) {
+    if (distances[i] > 0 && distances[i] < THRESHOLD_CM) {
+      alert = true;
+    }
+  }
 
-  float d1 = readDistanceCM(TRIG1, ECHO1);
-  float d2 = readDistanceCM(TRIG2, ECHO2);
-  float d3 = readDistanceCM(TRIG3, ECHO3);
-
-  bool t1 = d1 >= 0 && d1 < THRESHOLD_CM;
-  bool t2 = d2 >= 0 && d2 < THRESHOLD_CM;
-  bool t3 = d3 >= 0 && d3 < THRESHOLD_CM;
-  bool alert = t1 || t2 || t3;
-
-  // ── LEDs ───────────────────────────────────────────────────────────
   digitalWrite(LED1, alert ? HIGH : LOW);
   digitalWrite(LED2, alert ? HIGH : LOW);
 
-  // ── Buzzer (pulsing when alert, off otherwise) ─────────────────────
   if (alert) {
-    unsigned long interval = buzzerOn ? BUZZ_ON_MS : BUZZ_OFF_MS;
-    if (now - lastBuzzToggle >= interval) {
+    if (millis() - lastBuzzToggle >= BUZZ_PULSE) {
       buzzerOn = !buzzerOn;
       digitalWrite(BUZZER, buzzerOn ? HIGH : LOW);
-      lastBuzzToggle = now;
+      lastBuzzToggle = millis();
     }
   } else {
     digitalWrite(BUZZER, LOW);
     buzzerOn = false;
   }
 
-  // ── Serial output ─────────────────────────────────────────────────
-  if (alert) {
-    if (t1) { Serial.print("S1:"); Serial.print(d1, 1); Serial.print("cm "); }
-    if (t2) { Serial.print("S2:"); Serial.print(d2, 1); Serial.print("cm "); }
-    if (t3) { Serial.print("S3:"); Serial.print(d3, 1); Serial.print("cm "); }
-    Serial.println();
+  static unsigned long lastPrint = 0;
+  if (millis() - lastPrint > 200) {
+    Serial.print("S1: "); Serial.print(distances[0]);
+    Serial.print(" S2: "); Serial.print(distances[1]);
+    Serial.print(" S3: "); Serial.println(distances[2]);
+    lastPrint = millis();
   }
 }
