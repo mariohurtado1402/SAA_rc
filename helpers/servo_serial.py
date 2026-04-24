@@ -15,9 +15,9 @@ import time
 
 import serial
 
-ANGLE_MIN = 0
+ANGLE_MIN = 60
 ANGLE_MAX = 140
-ANGLE_CENTER = 50
+ANGLE_CENTER = 100
 
 
 class SerialServo:
