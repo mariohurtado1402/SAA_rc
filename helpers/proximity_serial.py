@@ -1,17 +1,19 @@
 """
-Proximity Nano helper.
+Proximity / parking-sensor Nano helper.
 
-The Nano runs firmware/proximity/src/main.cpp at 115200 baud. Every ~200 ms
-it streams one line:
+The Nano runs firmware/proximity/src/main.cpp at 115200 baud. Every cycle
+(~150 ms) it streams one line:
 
-    S1: 12.3 S2: 45.6 S3: 78.9
+    L: 12 cm	C: 45 cm	R: 78 cm
 
-Distances are in centimeters; out-of-range pings come through as 0.0. The
-Nano is output-only — there's no command channel.
+Distances are integer centimeters; out-of-range pings come through as 0.
+The three sensors are all rear-facing (left / center / right).
 
-By convention used elsewhere in this project:
-    S1 = front, S2 = rear-left, S3 = rear-right
-The labels are configurable via the host (config.json -> proximity_labels).
+The Nano now accepts a single ASCII byte to gate its LEDs + buzzer:
+    '1' -> alerts ON   (will beep when something < 25 cm)
+    '0' -> alerts OFF  (silent, distance stream still flows)
+The firmware boots with alerts OFF so the buzzer doesn't beep until the
+driver explicitly enables the backup ADAS from the HMI.
 
 Run as a standalone tester:
     uv run python -m helpers.proximity_serial --port COM6
@@ -26,7 +28,8 @@ from typing import Callable, Optional, Tuple
 import serial
 
 LINE_RE = re.compile(
-    r"S1:\s*([-\d.]+)\s+S2:\s*([-\d.]+)\s+S3:\s*([-\d.]+)"
+    r"L:\s*(\d+)\s*cm\s*C:\s*(\d+)\s*cm\s*R:\s*(\d+)\s*cm",
+    re.IGNORECASE,
 )
 
 
@@ -34,12 +37,15 @@ class SerialProximity:
     def __init__(self, port: str, baud: int = 115200,
                  on_reading: Optional[Callable[[Tuple[float, float, float]], None]] = None):
         self.ser = serial.Serial(port, baud, timeout=0.2)
-        time.sleep(2.0)
+        time.sleep(2.0)  # Nano resets on open
         self._on_reading = on_reading
         self._latest: Tuple[float, float, float] = (0.0, 0.0, 0.0)
+        self._alerts_on = False
         self._stop = threading.Event()
         self._thread = threading.Thread(target=self._read_loop, daemon=True)
         self._thread.start()
+        # Make sure the Nano knows the desired startup state (silent).
+        self.set_alerts(False)
 
     def _read_loop(self):
         buf = b""
@@ -57,10 +63,10 @@ class SerialProximity:
                 if not m:
                     continue
                 try:
-                    s1, s2, s3 = (float(m.group(i)) for i in (1, 2, 3))
+                    left, center, right = (float(m.group(i)) for i in (1, 2, 3))
                 except ValueError:
                     continue
-                self._latest = (s1, s2, s3)
+                self._latest = (left, center, right)
                 if self._on_reading:
                     try:
                         self._on_reading(self._latest)
@@ -71,7 +77,25 @@ class SerialProximity:
     def latest(self) -> Tuple[float, float, float]:
         return self._latest
 
+    @property
+    def alerts_on(self) -> bool:
+        return self._alerts_on
+
+    def set_alerts(self, on: bool) -> None:
+        """Gate the Arduino's LEDs + buzzer. Idempotent."""
+        try:
+            self.ser.write(b"1" if on else b"0")
+            self.ser.flush()
+            self._alerts_on = on
+        except (serial.SerialException, OSError):
+            pass
+
     def close(self):
+        # Be polite: silence the buzzer on shutdown.
+        try:
+            self.set_alerts(False)
+        except Exception:
+            pass
         self._stop.set()
         try:
             self.ser.close()
@@ -83,14 +107,19 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--port", required=True)
     parser.add_argument("--baud", type=int, default=115200)
+    parser.add_argument("--alerts", action="store_true",
+                        help="Enable LEDs + buzzer (default: silent stream only)")
     args = parser.parse_args()
 
     prox = SerialProximity(args.port, args.baud)
+    if args.alerts:
+        prox.set_alerts(True)
     print("Streaming proximity. Press Ctrl-C to quit.")
     try:
         while True:
-            s1, s2, s3 = prox.latest
-            print(f"S1 = {s1:6.1f} cm   S2 = {s2:6.1f} cm   S3 = {s3:6.1f} cm")
+            l, c, r = prox.latest
+            print(f"L = {l:5.0f} cm   C = {c:5.0f} cm   R = {r:5.0f} cm   "
+                  f"alerts = {prox.alerts_on}")
             time.sleep(0.2)
     except KeyboardInterrupt:
         pass

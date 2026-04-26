@@ -96,6 +96,12 @@ def build_app(state: SystemState, frames: FrameBuffer,
             state.cmd_steer_deg = 90
         return {"ok": True}
 
+    @app.post("/api/backup_adas")
+    async def backup_adas(payload: dict):
+        with state.lock:
+            state.proximity_alerts_on = bool(payload.get("on", False))
+        return {"ok": True, "on": state.proximity_alerts_on}
+
     @app.get("/api/calibration")
     def get_calibration():
         return state.calibration.to_dict()
@@ -119,6 +125,9 @@ def build_app(state: SystemState, frames: FrameBuffer,
                 state.ldr_off_threshold = int(payload["ldr_off_threshold"])
             if "lka_gain_deg" in payload:
                 state.lka_gain_deg = float(payload["lka_gain_deg"])
+            if "rcca_test_throttle_pct" in payload:
+                state.rcca_test_throttle_pct = max(-100.0, min(0.0,
+                    float(payload["rcca_test_throttle_pct"])))
         _persist(config_path, state)
         return {"ok": True}
 
@@ -173,5 +182,6 @@ def _persist(path: Path, state: SystemState) -> None:
         "off": state.ldr_off_threshold,
     }
     existing["lka_gain"] = state.lka_gain_deg
+    existing["rcca_test_throttle_pct"] = state.rcca_test_throttle_pct
     existing.setdefault("proximity_labels", state.proximity_labels)
     path.write_text(json.dumps(existing, indent=2))

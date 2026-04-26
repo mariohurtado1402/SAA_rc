@@ -27,17 +27,25 @@ class SystemState:
     ldr_on_threshold: int = 400
     ldr_off_threshold: int = 500
 
-    # Ultrasonic distances in cm; key = configurable label
+    # Ultrasonic distances in cm; key = configurable label.
+    # Default mirrors firmware: all three sensors are rear-facing
+    # (left / center / right).
     distances: dict = field(default_factory=lambda: {
-        "front": 0.0, "rear_left": 0.0, "rear_right": 0.0
+        "rear_left": 0.0, "rear_center": 0.0, "rear_right": 0.0
     })
     rcca_threshold_cm: float = 25.0
+    # Backup ADAS (LEDs + buzzer on the proximity Nano) — driver-toggled.
+    proximity_alerts_on: bool = False
 
     # Lane vision
     lane_diff: Optional[int] = None
     lane_bias: Optional[float] = None
     lane_action: str = "None"
     lka_gain_deg: float = 30.0  # max servo deviation from center
+
+    # RCCA test-mode cruise: slow auto-reverse % so the user can verify the
+    # always-on rear-brake without holding the throttle slider.
+    rcca_test_throttle_pct: float = -20.0
 
     # User commands (from HMI)
     cmd_throttle_pct: float = 0.0
@@ -57,7 +65,7 @@ class SystemState:
 
     # Calibration profile (separate object so it round-trips through the HMI)
     calibration: ThrottleCalibration = field(default_factory=ThrottleCalibration)
-    proximity_labels: list = field(default_factory=lambda: ["front", "rear_left", "rear_right"])
+    proximity_labels: list = field(default_factory=lambda: ["rear_left", "rear_center", "rear_right"])
 
     lock: threading.RLock = field(default_factory=threading.RLock, repr=False)
 
@@ -74,12 +82,14 @@ class SystemState:
                 },
                 "distances": dict(self.distances),
                 "rcca_threshold_cm": self.rcca_threshold_cm,
+                "proximity_alerts_on": self.proximity_alerts_on,
                 "lane": {
                     "diff": self.lane_diff,
                     "bias": self.lane_bias,
                     "action": self.lane_action,
                     "gain_deg": self.lka_gain_deg,
                 },
+                "rcca_test_throttle_pct": self.rcca_test_throttle_pct,
                 "command": {
                     "throttle_pct": self.cmd_throttle_pct,
                     "steer_deg": self.cmd_steer_deg,

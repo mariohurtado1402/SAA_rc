@@ -55,14 +55,23 @@
     </section>
 
     <section class="tile" id="tile-prox">
-      <h2>Ultrasonic</h2>
-      <div class="bar"><span class="lbl">Front</span>     <progress id="bar-front"      max="200"></progress> <span id="d-front">—</span></div>
-      <div class="bar"><span class="lbl">Rear L</span>    <progress id="bar-rear_left"  max="200"></progress> <span id="d-rear_left">—</span></div>
-      <div class="bar"><span class="lbl">Rear R</span>    <progress id="bar-rear_right" max="200"></progress> <span id="d-rear_right">—</span></div>
+      <h2>Ultrasonic (Rear)</h2>
+      <div class="bar"><span class="lbl">Rear L</span>      <progress id="bar-rear_left"   max="200"></progress> <span id="d-rear_left">—</span></div>
+      <div class="bar"><span class="lbl">Rear C</span>      <progress id="bar-rear_center" max="200"></progress> <span id="d-rear_center">—</span></div>
+      <div class="bar"><span class="lbl">Rear R</span>      <progress id="bar-rear_right"  max="200"></progress> <span id="d-rear_right">—</span></div>
+      <p class="row">
+        <button id="backup-toggle">Backup ADAS: OFF</button>
+        <span class="muted">turns the Arduino's LEDs + buzzer on/off</span>
+      </p>
       <p class="row">
         <label>RCCA brake &lt; <input id="rcca-th" type="number" min="0" max="200" step="1"> cm</label>
         <span id="rcca-flag" class="alert hidden">RCCA BRAKE</span>
       </p>
+      <p class="row">
+        <label>RCCA test cruise: <input id="rcca-test" type="number" min="-100" max="0" step="1"> %</label>
+        <span class="muted">(applied automatically in RCCA mode)</span>
+      </p>
+      <p class="muted">Rear brake is always-on in any mode whenever throttle &lt; 0.</p>
     </section>
 
     <section class="tile" id="tile-cal">

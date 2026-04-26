@@ -1,83 +1,120 @@
 #include <Arduino.h>
 #include <NewPing.h>
 
-const float THRESHOLD_CM = 20.0;
-const int SONAR_NUM = 3;
-const int MAX_DISTANCE = 200;
+#define SONAR_NUM 3
+#define MAX_DISTANCE 200
 
-const int LED1 = 8;
-const int LED2 = 9;
-const int BUZZER = 10;
+#define LED1 2
+#define LED2 3
 
-const unsigned long BUZZ_PULSE = 100;
-unsigned long lastBuzzToggle = 0;
-bool buzzerOn = false;
+#define TRIG1 4
+#define ECHO1 5
+#define TRIG2 6
+#define ECHO2 7
+#define TRIG3 8
+#define ECHO3 9
+
+#define BUZZER 10
+
+#define THRESHOLD_CM 25
 
 NewPing sonar[SONAR_NUM] = {
-  NewPing(2, 3, MAX_DISTANCE),
-  NewPing(4, 5, MAX_DISTANCE),
-  NewPing(6, 7, MAX_DISTANCE)
+  NewPing(TRIG1, ECHO1, MAX_DISTANCE),
+  NewPing(TRIG2, ECHO2, MAX_DISTANCE),
+  NewPing(TRIG3, ECHO3, MAX_DISTANCE)
 };
 
-float distances[SONAR_NUM];
-unsigned long pingTimer[SONAR_NUM];
-int currentSensor = 0;
+unsigned int leftDist, centerDist, rightDist;
 
-void echoCheck() {
-  if (sonar[currentSensor].check_timer()) {
-    distances[currentSensor] = sonar[currentSensor].ping_result / US_ROUNDTRIP_CM;
-  }
-}
+unsigned long previousMillis = 0;
+const long beepInterval = 500;
+bool buzzerState = false;
+
+// Host-controlled enable. Boots disabled so the buzzer doesn't beep until
+// the driver explicitly turns the backup ADAS on from the HMI.
+//   '1' over serial -> enable LEDs + buzzer
+//   '0' over serial -> disable (silent, LEDs off) — distance stream keeps
+//                      flowing either way
+bool alertsEnabled = false;
 
 void setup() {
   Serial.begin(115200);
+
   pinMode(LED1, OUTPUT);
   pinMode(LED2, OUTPUT);
   pinMode(BUZZER, OUTPUT);
 
-  pingTimer[0] = millis() + 75;
-  for (int i = 1; i < SONAR_NUM; i++) {
-    pingTimer[i] = pingTimer[i - 1] + 33;
-  }
+  digitalWrite(LED1, LOW);
+  digitalWrite(LED2, LOW);
+  digitalWrite(BUZZER, LOW);
+
+  Serial.println("Parking Sensor Ready");
 }
 
 void loop() {
-  for (int i = 0; i < SONAR_NUM; i++) {
-    if (millis() >= pingTimer[i]) {
-      pingTimer[i] += 33 * SONAR_NUM;
-      sonar[currentSensor].timer_stop();
-      currentSensor = i;
-      distances[currentSensor] = 0;
-      sonar[currentSensor].ping_timer(echoCheck);
-    }
+  while (Serial.available()) {
+    char c = Serial.read();
+    if (c == '1') alertsEnabled = true;
+    else if (c == '0') alertsEnabled = false;
   }
 
+  leftDist = sonar[0].ping_cm();
+  delay(40);
+
+  centerDist = sonar[1].ping_cm();
+  delay(40);
+
+  rightDist = sonar[2].ping_cm();
+  delay(40);
+
+  Serial.print("L: ");
+  Serial.print(leftDist);
+  Serial.print(" cm\tC: ");
+  Serial.print(centerDist);
+  Serial.print(" cm\tR: ");
+  Serial.print(rightDist);
+  Serial.println(" cm");
+
+  digitalWrite(LED1, LOW);
+  digitalWrite(LED2, LOW);
+
   bool alert = false;
-  for (int i = 0; i < SONAR_NUM; i++) {
-    if (distances[i] > 0 && distances[i] < THRESHOLD_CM) {
+
+  if (alertsEnabled) {
+    if (leftDist > 0 && leftDist <= THRESHOLD_CM) {
+      digitalWrite(LED2, HIGH);
+      alert = true;
+    }
+
+    if (rightDist > 0 && rightDist <= THRESHOLD_CM) {
+      digitalWrite(LED1, HIGH);
+      alert = true;
+    }
+
+    if (centerDist > 0 && centerDist <= THRESHOLD_CM) {
+      digitalWrite(LED1, HIGH);
+      digitalWrite(LED2, HIGH);
       alert = true;
     }
   }
 
-  digitalWrite(LED1, alert ? HIGH : LOW);
-  digitalWrite(LED2, alert ? HIGH : LOW);
-
   if (alert) {
-    if (millis() - lastBuzzToggle >= BUZZ_PULSE) {
-      buzzerOn = !buzzerOn;
-      digitalWrite(BUZZER, buzzerOn ? HIGH : LOW);
-      lastBuzzToggle = millis();
+    unsigned long currentMillis = millis();
+    if (currentMillis - previousMillis >= beepInterval) {
+      previousMillis = currentMillis;
+      buzzerState = !buzzerState;
+      
+      if (buzzerState) {
+        tone(BUZZER, 1000);
+      } else {
+        noTone(BUZZER);
+      }
     }
   } else {
-    digitalWrite(BUZZER, LOW);
-    buzzerOn = false;
+    noTone(BUZZER);
+    buzzerState = false;
+    previousMillis = 0;
   }
 
-  static unsigned long lastPrint = 0;
-  if (millis() - lastPrint > 200) {
-    Serial.print("S1: "); Serial.print(distances[0]);
-    Serial.print(" S2: "); Serial.print(distances[1]);
-    Serial.print(" S3: "); Serial.println(distances[2]);
-    lastPrint = millis();
-  }
+  delay(50);
 }

@@ -40,7 +40,7 @@
     setIfIdle("lka-gain", s.lane.gain_deg);
 
     // proximity
-    for (const k of ["front", "rear_left", "rear_right"]) {
+    for (const k of ["rear_left", "rear_center", "rear_right"]) {
       const v = s.distances[k];
       const d = $(`d-${k}`);
       const bar = $(`bar-${k}`);
@@ -48,7 +48,13 @@
       if (bar) bar.value = Math.min(200, Math.max(0, v || 0));
     }
     setIfIdle("rcca-th", s.rcca_threshold_cm);
+    setIfIdle("rcca-test", s.rcca_test_throttle_pct);
     $("rcca-flag").classList.toggle("hidden", !s.applied.rcca_brake);
+
+    // backup ADAS toggle
+    const bt = $("backup-toggle");
+    bt.textContent = `Backup ADAS: ${s.proximity_alerts_on ? "ON" : "OFF"}`;
+    bt.classList.toggle("active", s.proximity_alerts_on);
 
     // calibration
     for (const k of [
@@ -95,6 +101,10 @@
     b.onclick = () => postJSON("/api/mode", { mode: b.dataset.mode });
   });
   $("stop").onclick = () => postJSON("/api/stop", {});
+  $("backup-toggle").onclick = () => {
+    const isOn = $("backup-toggle").classList.contains("active");
+    postJSON("/api/backup_adas", { on: !isOn });
+  };
 
   let cmdThrottle = 0, cmdSteer = 100;
   function pushCommand() {
@@ -114,9 +124,10 @@
       ldr_off_threshold: Number($("ldr-off").value),
       rcca_threshold_cm: Number($("rcca-th").value),
       lka_gain_deg: Number($("lka-gain").value),
+      rcca_test_throttle_pct: Number($("rcca-test").value),
     });
   }
-  ["ldr-on", "ldr-off", "rcca-th", "lka-gain"].forEach((id) =>
+  ["ldr-on", "ldr-off", "rcca-th", "lka-gain", "rcca-test"].forEach((id) =>
     $(id).addEventListener("change", pushThresholds));
 
   // Calibration save

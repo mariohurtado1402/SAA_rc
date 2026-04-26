@@ -101,8 +101,9 @@ def main():
     state.ldr_on_threshold = int(ldr_th.get("on", 400))
     state.ldr_off_threshold = int(ldr_th.get("off", 500))
     state.lka_gain_deg = float(cfg.get("lka_gain", 30.0))
+    state.rcca_test_throttle_pct = float(cfg.get("rcca_test_throttle_pct", -20.0))
     state.proximity_labels = list(cfg.get("proximity_labels",
-                                          ["front", "rear_left", "rear_right"]))
+                                          ["rear_left", "rear_center", "rear_right"]))
     state.distances = {label: 0.0 for label in state.proximity_labels}
 
     # ---- Bring up subsystems ----
@@ -167,7 +168,7 @@ def main():
         threading.Thread(target=cal_sync, daemon=True).start()
 
         # ---- Control loop ----
-        loop = ControlLoop(state, throttle, servo, ldr=ldr)
+        loop = ControlLoop(state, throttle, servo, ldr=ldr, proximity=proximity)
         loop.start()
 
         # ---- Web app ----

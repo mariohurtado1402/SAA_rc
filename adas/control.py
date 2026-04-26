@@ -24,11 +24,13 @@ class ControlLoop:
     def __init__(self, state: SystemState,
                  throttle: Optional[ThrottleController],
                  servo: Optional[SerialServo],
-                 ldr=None):
+                 ldr=None,
+                 proximity=None):
         self.state = state
         self.throttle = throttle
         self.servo = servo
         self.ldr = ldr
+        self.proximity = proximity
         self._stop = threading.Event()
         self._thread: Optional[threading.Thread] = None
 
@@ -71,6 +73,7 @@ class ControlLoop:
             headlight = s.headlight_on
             distances = dict(s.distances)
             rcca_threshold = s.rcca_threshold_cm
+            rcca_test_pct = s.rcca_test_throttle_pct
             lane_bias = s.lane_bias
             lka_gain = s.lka_gain_deg
 
@@ -87,21 +90,36 @@ class ControlLoop:
         with s.lock:
             s.headlight_on = new_headlight
 
+        # 1b) Backup ADAS gate — sync the proximity Nano's alerts to whatever
+        # the driver toggled in the HMI.
+        if self.proximity is not None:
+            with s.lock:
+                want_alerts = s.proximity_alerts_on
+            if self.proximity.alerts_on != want_alerts:
+                self.proximity.set_alerts(want_alerts)
+
         # 2) Resolve throttle + steering by mode
         target_throttle = cmd_throttle
         target_steer = cmd_steer
-        rcca_brake = False
 
         if mode is Mode.LKA and lane_bias is not None:
             target_steer = int(round(ANGLE_CENTER + lane_bias * lka_gain))
             target_steer = max(ANGLE_MIN, min(ANGLE_MAX, target_steer))
 
         elif mode is Mode.RCCA:
-            if cmd_throttle < 0:
-                rear_min = self._min_rear_distance(distances)
-                if rear_min is not None and 0 < rear_min < rcca_threshold:
-                    target_throttle = 0.0
-                    rcca_brake = True
+            # Test cruise: hold a slow auto-reverse so the safety brake is
+            # exercised without the user holding the throttle slider.
+            target_throttle = rcca_test_pct
+
+        # 2b) Always-on rear collision brake. Independent of mode: any time
+        # the car is being asked to reverse and any rear sensor reads under
+        # the threshold, we drop the ESC to neutral.
+        rcca_brake = False
+        if target_throttle < 0:
+            rear_min = self._min_rear_distance(distances)
+            if rear_min is not None and 0 < rear_min < rcca_threshold:
+                target_throttle = 0.0
+                rcca_brake = True
 
         # 3) Apply
         applied_us = None
