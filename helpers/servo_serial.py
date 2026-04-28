@@ -15,8 +15,8 @@ import time
 
 import serial
 
-ANGLE_MIN = 60
-ANGLE_MAX = 140
+ANGLE_MIN = 50
+ANGLE_MAX = 150
 ANGLE_CENTER = 100
 
 

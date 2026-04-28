@@ -236,7 +236,7 @@ def main():
                        int(max(0.0, min(1.0, args.deadzone)) * 100), 100,
                        lambda v: None)
     cv2.createTrackbar("Gain (deg)", "Result",
-                       max(0, min(60, args.gain)), 60, lambda v: None)
+                       max(0, min(50, args.gain)), 50, lambda v: None)
 
     last_print = 0.0
     print("Controls:  q = quit\n")
