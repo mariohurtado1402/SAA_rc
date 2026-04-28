@@ -13,6 +13,7 @@ Run as a standalone tester (Windows / WSL / Linux):
 
 import argparse
 import time
+import tkinter as tk
 from dataclasses import dataclass
 from typing import Optional
 
@@ -235,8 +236,21 @@ def main():
     cv2.createTrackbar("Deadzone x100", "Result",
                        int(max(0.0, min(1.0, args.deadzone)) * 100), 100,
                        lambda v: None)
-    cv2.createTrackbar("Gain (deg)", "Result",
-                       max(0, min(50, args.gain)), 50, lambda v: None)
+
+    # Gain is a free-form integer field instead of a trackbar so the user can
+    # type values much larger than 50 (saturates the servo earlier, more
+    # aggressive LKA). The actual angle is still clamped in write_angle.
+    gain_root = tk.Tk()
+    gain_root.title("LKA Gain")
+    gain_root.geometry("260x90")
+    gain_var = tk.StringVar(value=str(max(0, args.gain)))
+    tk.Label(gain_root, text="Gain (deg). Type any positive integer:").pack(
+        pady=(10, 2))
+    gain_entry = tk.Entry(gain_root, textvariable=gain_var, width=12,
+                          justify="center", font=("TkDefaultFont", 14))
+    gain_entry.pack()
+    gain_entry.focus_set()
+    last_gain = max(0, args.gain)
 
     last_print = 0.0
     print("Controls:  q = quit\n")
@@ -248,7 +262,14 @@ def main():
                 break
 
             deadzone = cv2.getTrackbarPos("Deadzone x100", "Result") / 100.0
-            gain = cv2.getTrackbarPos("Gain (deg)", "Result")
+            try:
+                gain_root.update()
+                last_gain = max(0, int(gain_var.get()))
+            except (tk.TclError, ValueError):
+                # Window closed or entry mid-edit / non-numeric — keep the
+                # last good value so the servo doesn't snap to 0.
+                pass
+            gain = last_gain
 
             target_angle = bias_to_angle(result.bias, deadzone, gain)
             if servo is not None:
@@ -279,6 +300,10 @@ def main():
         if servo is not None:
             servo.center()
             servo.close()
+        try:
+            gain_root.destroy()
+        except Exception:
+            pass
         cv2.destroyAllWindows()
         print("Closed.")
 
