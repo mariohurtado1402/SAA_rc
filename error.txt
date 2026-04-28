@@ -1,0 +1,93 @@
+b.io/ for example) or switch to fontconfig.
+QFontDatabase: Cannot find font directory /home/mario/Documents/SAA26/proyectoFinal/.venv/lib/python3.12/site-packages/cv2/qt/fonts.
+Note that Qt no longer ships fonts. Deploy some (from https://dejavu-fonts.github.io/ for example) or switch to fontconfig.
+QFontDatabase: Cannot find font directory /home/mario/Documents/SAA26/proyectoFinal/.venv/lib/python3.12/site-packages/cv2/qt/fonts.
+Note that Qt no longer ships fonts. Deploy some (from https://dejavu-fonts.github.io/ for example) or switch to fontconfig.
+Controls:  q = quit
+
+diff =  -19  bias = -0.06  action = Bang-Left   servo = 100  dz = 0.15  gain = 50
+diff =  -23  bias = -0.07  action = Bang-Left   servo = 100  dz = 0.15  gain = 50
+diff =  -19  bias = -0.06  action = Bang-Left   servo = 100  dz = 0.15  gain = 50
+diff =  -20  bias = -0.06  action = Bang-Left   servo = 100  dz = 0.15  gain = 50
+diff =  -14  bias = -0.04  action = Bang-Left   servo = 100  dz = 0.15  gain = 50
+diff =  -20  bias = -0.06  action = Bang-Left   servo = 100  dz = 0.15  gain = 50
+diff =  -16  bias = -0.05  action = Bang-Left   servo = 100  dz = 0.15  gain = 50
+diff =  -16  bias = -0.05  action = Bang-Left   servo = 100  dz = 0.15  gain = 50
+diff =  -17  bias = -0.05  action = Bang-Left   servo = 100  dz = 0.15  gain = 50
+diff =  -19  bias = -0.06  action = Bang-Left   servo = 100  dz = 0.15  gain = 50
+diff =  -21  bias = -0.07  action = Bang-Left   servo = 100  dz = 0.15  gain = 50
+diff =  -18  bias = -0.06  action = Bang-Left   servo = 100  dz = 0.15  gain = 50
+diff =  -15  bias = -0.05  action = Bang-Left   servo = 100  dz = 0.15  gain = 50
+diff =  -17  bias = -0.05  action = Bang-Left   servo = 100  dz = 0.15  gain = 50
+diff =  -13  bias = -0.04  action = Bang-Left   servo = 100  dz = 0.15  gain = 50
+diff =   -1  bias = -0.00  action = Bang-Left   servo = 100  dz = 0.15  gain = 50
+diff =  +39  bias = +0.12  action = Bang-Right  servo = 100  dz = 0.15  gain = 50
+diff =  +63  bias = +0.20  action = Bang-Right  servo = 103  dz = 0.15  gain = 50
+diff =  +71  bias = +0.22  action = Bang-Right  servo = 104  dz = 0.15  gain = 50
+diff =  +87  bias = +0.27  action = Bang-Right  servo = 107  dz = 0.15  gain = 50
+diff =  +97  bias = +0.30  action = Bang-Right  servo = 109  dz = 0.15  gain = 50
+diff = +114  bias = +0.36  action = Bang-Right  servo = 112  dz = 0.15  gain = 50
+diff = +118  bias = +0.37  action = Bang-Right  servo = 113  dz = 0.15  gain = 50
+diff = +106  bias = +0.33  action = Bang-Right  servo = 111  dz = 0.15  gain = 50
+diff =  +87  bias = +0.27  action = Bang-Right  servo = 107  dz = 0.15  gain = 50
+diff =  +56  bias = +0.17  action = Bang-Right  servo = 101  dz = 0.15  gain = 50
+diff =  +16  bias = +0.05  action = Bang-Right  servo = 100  dz = 0.15  gain = 50
+diff =   -4  bias = -0.01  action = Bang-Left   servo = 100  dz = 0.15  gain = 50
+diff =  -13  bias = -0.04  action = Bang-Left   servo = 100  dz = 0.15  gain = 50
+diff =  -39  bias = -0.12  action = Bang-Left   servo = 100  dz = 0.15  gain = 50
+diff =  -37  bias = -0.12  action = Bang-Left   servo = 100  dz = 0.15  gain = 50
+diff =  -17  bias = -0.05  action = Bang-Left   servo = 100  dz = 0.15  gain = 50
+diff =   -7  bias = -0.02  action = Bang-Left   servo = 100  dz = 0.15  gain = 50
+diff =   +1  bias = +0.00  action = Bang-Right  servo = 100  dz = 0.15  gain = 50
+diff =  +25  bias = +0.08  action = Bang-Right  servo = 100  dz = 0.15  gain = 50
+diff =  +58  bias = +0.18  action = Bang-Right  servo = 102  dz = 0.15  gain = 50
+diff =  +95  bias = +0.30  action = Bang-Right  servo = 109  dz = 0.15  gain = 50
+diff = +110  bias = +0.34  action = Bang-Right  servo = 111  dz = 0.15  gain = 50
+no lane | servo=100
+no lane | servo=100
+no lane | servo=100
+no lane | servo=100
+diff = +116  bias = +0.36  action = Bang-Right  servo = 112  dz = 0.15  gain = 50
+Traceback (most recent call last):
+  File "/home/mario/Documents/SAA26/proyectoFinal/.venv/lib/python3.12/site-packages/serial/serialposix.py", line 621, in write
+    n = os.write(self.fd, d)
+        ^^^^^^^^^^^^^^^^^^^^
+OSError: [Errno 5] Input/output error
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/home/mario/Documents/SAA26/proyectoFinal/helpers/vision_serial.py", line 243, in main
+    target_angle = servo.write_angle(target_angle)
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/mario/Documents/SAA26/proyectoFinal/helpers/servo_serial.py", line 32, in write_angle
+    self.ser.write(f"{angle}\n".encode("ascii"))
+  File "/home/mario/Documents/SAA26/proyectoFinal/.venv/lib/python3.12/site-packages/serial/serialposix.py", line 655, in write
+    raise SerialException('write failed: {}'.format(e))
+serial.serialutil.SerialException: write failed: [Errno 5] Input/output error
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/home/mario/Documents/SAA26/proyectoFinal/.venv/lib/python3.12/site-packages/serial/serialposix.py", line 621, in write
+    n = os.write(self.fd, d)
+        ^^^^^^^^^^^^^^^^^^^^
+OSError: [Errno 5] Input/output error
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "<frozen runpy>", line 198, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "/home/mario/Documents/SAA26/proyectoFinal/helpers/vision_serial.py", line 275, in <module>
+    main()
+  File "/home/mario/Documents/SAA26/proyectoFinal/helpers/vision_serial.py", line 268, in main
+    servo.center()
+  File "/home/mario/Documents/SAA26/proyectoFinal/helpers/servo_serial.py", line 37, in center
+    return self.write_angle(ANGLE_CENTER)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/mario/Documents/SAA26/proyectoFinal/helpers/servo_serial.py", line 32, in write_angle
+    self.ser.write(f"{angle}\n".encode("ascii"))
+  File "/home/mario/Documents/SAA26/proyectoFinal/.venv/lib/python3.12/site-packages/serial/serialposix.py", line 655, in write
+    raise SerialException('write failed: {}'.format(e))
+serial.serialutil.SerialException: write failed: [Errno 5] Input/output error
