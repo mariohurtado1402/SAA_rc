@@ -38,14 +38,21 @@ class LaneResult:
 
 class LaneVision:
     def __init__(self, camera_index: int = 0, width: Optional[int] = None,
-                 height: Optional[int] = None):
+                 height: Optional[int] = None, max_res: bool = False):
         self.cap = cv2.VideoCapture(camera_index)
+        if not self.cap.isOpened():
+            raise RuntimeError(f"Could not open camera index {camera_index}")
+        if max_res:
+            # Ask for an absurdly large frame; V4L2 / DirectShow / AVFoundation
+            # clamp to the highest mode the device actually supports.
+            self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, 4096)
+            self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 4096)
         if width:
             self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, width)
         if height:
             self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, height)
-        if not self.cap.isOpened():
-            raise RuntimeError(f"Could not open camera index {camera_index}")
+        self.width = int(self.cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+        self.height = int(self.cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
 
     def read(self) -> Optional[LaneResult]:
         ret, frame = self.cap.read()
@@ -194,6 +201,9 @@ def main():
                         help="Camera index (default 0)")
     parser.add_argument("--width", type=int, default=None)
     parser.add_argument("--height", type=int, default=None)
+    parser.add_argument("--max-res", action="store_true",
+                        help="Probe and use the camera's largest supported "
+                             "resolution. Ignored if --width/--height given.")
     parser.add_argument("--print-every", type=float, default=0.25,
                         help="Seconds between stdout prints (default 0.25)")
     parser.add_argument("--servo-port", default=None,
@@ -208,7 +218,9 @@ def main():
                              "degrees. Tunable live via the 'Gain' trackbar.")
     args = parser.parse_args()
 
-    vision = LaneVision(args.camera, args.width, args.height)
+    vision = LaneVision(args.camera, args.width, args.height,
+                        max_res=args.max_res)
+    print(f"Camera open at {vision.width}x{vision.height}.")
 
     servo: Optional[SerialServo] = None
     if args.servo_port:
