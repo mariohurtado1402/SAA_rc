@@ -22,22 +22,55 @@ ANGLE_CENTER = 100
 
 class SerialServo:
     def __init__(self, port: str, baud: int = 115200):
+        self._port = port
+        self._baud = baud
         # The Nano resets when the serial port opens; wait for the bootloader
         # to hand over to the sketch before sending anything.
         self.ser = serial.Serial(port, baud, timeout=0.1)
         time.sleep(2.0)
 
+    def _try_reopen(self) -> bool:
+        # Brownouts / USB glitches drop the fd mid-run; re-enumerate.
+        try:
+            self.ser = serial.Serial(self._port, self._baud, timeout=0.1)
+            time.sleep(2.0)
+            return True
+        except (serial.SerialException, OSError):
+            self.ser = None
+            return False
+
     def write_angle(self, angle: int):
         angle = max(ANGLE_MIN, min(ANGLE_MAX, int(angle)))
-        self.ser.write(f"{angle}\n".encode("ascii"))
-        self.ser.flush()
+        if self.ser is None and not self._try_reopen():
+            return angle
+        try:
+            self.ser.write(f"{angle}\n".encode("ascii"))
+            self.ser.flush()
+        except (serial.SerialException, OSError) as e:
+            print(f"[servo] write failed ({e}); reconnecting...")
+            try:
+                self.ser.close()
+            except Exception:
+                pass
+            self.ser = None
+            if self._try_reopen():
+                try:
+                    self.ser.write(f"{angle}\n".encode("ascii"))
+                    self.ser.flush()
+                except (serial.SerialException, OSError):
+                    self.ser = None
         return angle
 
     def center(self):
         return self.write_angle(ANGLE_CENTER)
 
     def close(self):
-        self.ser.close()
+        if self.ser is not None:
+            try:
+                self.ser.close()
+            except Exception:
+                pass
+            self.ser = None
 
 
 def _read_key() -> str:
