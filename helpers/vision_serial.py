@@ -8,6 +8,7 @@ standalone and shows the camera feed in real time.
 Run as a standalone tester (Windows / WSL / Linux):
     uv run python -m helpers.vision_serial
     uv run python -m helpers.vision_serial --camera 1
+    uv run python -m helpers.vision_serial --servo-port COM5
 """
 
 import argparse
@@ -17,6 +18,8 @@ from typing import Optional
 
 import cv2
 import numpy as np
+
+from .servo_serial import ANGLE_CENTER, ANGLE_MAX, ANGLE_MIN, SerialServo
 
 
 @dataclass
@@ -149,6 +152,42 @@ class LaneVision:
         self.cap.release()
 
 
+def bias_to_angle(bias: Optional[float], deadzone: float, gain: int) -> int:
+    """Map a normalized lane bias to a servo angle, with a center deadzone.
+
+    `bias` in [-1, 1]. Inside the deadzone the servo holds center; outside,
+    the response is rescaled so it grows continuously from 0 at the edge of
+    the deadzone up to `gain` degrees at |bias| = 1.
+    """
+    if bias is None:
+        return ANGLE_CENTER
+    if abs(bias) < deadzone:
+        return ANGLE_CENTER
+    sign = 1.0 if bias > 0 else -1.0
+    span = max(1e-6, 1.0 - deadzone)
+    eff = (abs(bias) - deadzone) / span
+    angle = int(round(ANGLE_CENTER + sign * eff * gain))
+    return max(ANGLE_MIN, min(ANGLE_MAX, angle))
+
+
+def _draw_lka_overlay(frame: np.ndarray, deadzone: float, gain: int,
+                      target_angle: int, sent: bool) -> None:
+    h, w = frame.shape[:2]
+    cx = w // 2
+    dz_px = int(deadzone * (w / 2.0))
+    # Yellow deadzone band.
+    overlay = frame.copy()
+    cv2.rectangle(overlay, (cx - dz_px, 0), (cx + dz_px, h), (0, 255, 255), -1)
+    cv2.addWeighted(overlay, 0.15, frame, 0.85, 0, frame)
+    cv2.line(frame, (cx - dz_px, 0), (cx - dz_px, h), (0, 200, 200), 1)
+    cv2.line(frame, (cx + dz_px, 0), (cx + dz_px, h), (0, 200, 200), 1)
+    label = f"servo={target_angle:3d}  dz={deadzone:.2f}  gain={gain:2d}"
+    if not sent:
+        label += "  (no port)"
+    cv2.putText(frame, label, (10, h - 12),
+                cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 255), 2, cv2.LINE_AA)
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--camera", type=int, default=0,
@@ -157,11 +196,37 @@ def main():
     parser.add_argument("--height", type=int, default=None)
     parser.add_argument("--print-every", type=float, default=0.25,
                         help="Seconds between stdout prints (default 0.25)")
+    parser.add_argument("--servo-port", default=None,
+                        help="Serial port of the steering Nano (e.g. COM5, "
+                             "/dev/ttyUSB0). Omit to run vision-only.")
+    parser.add_argument("--servo-baud", type=int, default=115200)
+    parser.add_argument("--deadzone", type=float, default=0.15,
+                        help="Initial bias deadzone in [0, 1]. Tunable live "
+                             "via the 'Deadzone x100' trackbar.")
+    parser.add_argument("--gain", type=int, default=30,
+                        help="Initial max servo deviation from center, in "
+                             "degrees. Tunable live via the 'Gain' trackbar.")
     args = parser.parse_args()
 
     vision = LaneVision(args.camera, args.width, args.height)
-    last_print = 0.0
 
+    servo: Optional[SerialServo] = None
+    if args.servo_port:
+        servo = SerialServo(args.servo_port, args.servo_baud)
+        servo.center()
+        print(f"Servo connected on {args.servo_port}, centered at "
+              f"{ANGLE_CENTER} deg.")
+    else:
+        print("No --servo-port given; running vision-only (no servo output).")
+
+    cv2.namedWindow("Result")
+    cv2.createTrackbar("Deadzone x100", "Result",
+                       int(max(0.0, min(1.0, args.deadzone)) * 100), 100,
+                       lambda v: None)
+    cv2.createTrackbar("Gain (deg)", "Result",
+                       max(0, min(60, args.gain)), 60, lambda v: None)
+
+    last_print = 0.0
     print("Controls:  q = quit\n")
     try:
         while True:
@@ -170,23 +235,38 @@ def main():
                 print("Camera read failed.")
                 break
 
+            deadzone = cv2.getTrackbarPos("Deadzone x100", "Result") / 100.0
+            gain = cv2.getTrackbarPos("Gain (deg)", "Result")
+
+            target_angle = bias_to_angle(result.bias, deadzone, gain)
+            if servo is not None:
+                target_angle = servo.write_angle(target_angle)
+
+            _draw_lka_overlay(result.annotated, deadzone, gain, target_angle,
+                              servo is not None)
+
             cv2.imshow("Result", result.annotated)
             cv2.imshow("Masked Edges", result.edges)
 
             now = time.monotonic()
             if now - last_print >= args.print_every:
                 if result.diff is None:
-                    print("no lane")
+                    print(f"no lane | servo={target_angle}")
                 else:
                     print(f"diff = {result.diff:+4d}  "
                           f"bias = {result.bias:+.2f}  "
-                          f"action = {result.action}")
+                          f"action = {result.action:<10s}  "
+                          f"servo = {target_angle:3d}  "
+                          f"dz = {deadzone:.2f}  gain = {gain}")
                 last_print = now
 
             if cv2.waitKey(1) & 0xFF == ord("q"):
                 break
     finally:
         vision.close()
+        if servo is not None:
+            servo.center()
+            servo.close()
         cv2.destroyAllWindows()
         print("Closed.")
 

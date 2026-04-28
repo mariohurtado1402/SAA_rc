@@ -8,7 +8,7 @@
   },
   "calibration": {
     "forward_min_us": 1580,
-    "forward_max_us": 2000,
+    "forward_max_us": ,
     "forward_kick_us": 1750,
     "forward_kick_ms": 250,
     "reverse_min_us": 1420,
