@@ -3,13 +3,15 @@ FastAPI HMI server. Exposes:
 
 - GET  /                  static single-page dashboard
 - WS   /ws/state          state.snapshot() pushed at ~10 Hz
-- GET  /video.mjpg        latest annotated camera frame as MJPEG stream
+- GET  /video.mjpg        annotated camera frame as MJPEG stream
+- GET  /edges.mjpg        ROI / edges mask as MJPEG stream
 - POST /api/mode          {"mode": "MANUAL"|"LKA"|"RCCA"}
 - POST /api/command       {"throttle_pct": float, "steer_deg": int}
 - GET  /api/calibration
 - POST /api/calibration   ThrottleCalibration fields
 - POST /api/thresholds    {"rcca_threshold_cm", "ldr_on_threshold",
-                           "ldr_off_threshold", "lka_gain_deg"}
+                           "ldr_off_threshold", "lka_gain_deg",
+                           "lka_deadzone"}
 - POST /api/stop          neutral throttle + center steering
 """
 
@@ -53,7 +55,7 @@ class FrameBuffer:
 
 
 def build_app(state: SystemState, frames: FrameBuffer,
-              config_path: Path) -> FastAPI:
+              frames_edges: FrameBuffer, config_path: Path) -> FastAPI:
     app = FastAPI(title="SAA_rc HMI")
 
     app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
@@ -76,7 +78,7 @@ def build_app(state: SystemState, frames: FrameBuffer,
             state.mode = mode
             # safety: returning to MANUAL or switching modes resets command
             state.cmd_throttle_pct = 0.0
-            state.cmd_steer_deg = 90
+            state.cmd_steer_deg = 100
         return {"ok": True, "mode": mode.value}
 
     @app.post("/api/command")
@@ -93,7 +95,7 @@ def build_app(state: SystemState, frames: FrameBuffer,
     async def stop():
         with state.lock:
             state.cmd_throttle_pct = 0.0
-            state.cmd_steer_deg = 90
+            state.cmd_steer_deg = 100
         return {"ok": True}
 
     @app.post("/api/backup_adas")
@@ -125,6 +127,9 @@ def build_app(state: SystemState, frames: FrameBuffer,
                 state.ldr_off_threshold = int(payload["ldr_off_threshold"])
             if "lka_gain_deg" in payload:
                 state.lka_gain_deg = float(payload["lka_gain_deg"])
+            if "lka_deadzone" in payload:
+                state.lka_deadzone = max(0.0, min(1.0,
+                    float(payload["lka_deadzone"])))
             if "rcca_test_throttle_pct" in payload:
                 state.rcca_test_throttle_pct = max(-100.0, min(0.0,
                     float(payload["rcca_test_throttle_pct"])))
@@ -143,17 +148,14 @@ def build_app(state: SystemState, frames: FrameBuffer,
         except Exception:
             return
 
-    @app.get("/video.mjpg")
-    def video():
+    def _mjpeg_response(buffer: FrameBuffer) -> StreamingResponse:
         boundary = b"--frame"
 
         async def gen():
             loop = asyncio.get_event_loop()
             while True:
-                jpeg = await loop.run_in_executor(None, frames.wait_for_next, 1.0)
+                jpeg = await loop.run_in_executor(None, buffer.wait_for_next, 1.0)
                 if not jpeg:
-                    # send a keepalive blank to avoid the browser closing the
-                    # connection if the camera hasn't produced a frame yet
                     await asyncio.sleep(0.1)
                     continue
                 yield (boundary + b"\r\n"
@@ -165,6 +167,14 @@ def build_app(state: SystemState, frames: FrameBuffer,
             gen(),
             media_type="multipart/x-mixed-replace; boundary=frame",
         )
+
+    @app.get("/video.mjpg")
+    def video():
+        return _mjpeg_response(frames)
+
+    @app.get("/edges.mjpg")
+    def edges():
+        return _mjpeg_response(frames_edges)
 
     return app
 
@@ -182,6 +192,7 @@ def _persist(path: Path, state: SystemState) -> None:
         "off": state.ldr_off_threshold,
     }
     existing["lka_gain"] = state.lka_gain_deg
+    existing["lka_deadzone"] = state.lka_deadzone
     existing["rcca_test_throttle_pct"] = state.rcca_test_throttle_pct
     existing.setdefault("proximity_labels", state.proximity_labels)
     path.write_text(json.dumps(existing, indent=2))

@@ -18,16 +18,22 @@
   </header>
 
   <main class="grid">
-    <section class="tile" id="tile-lights">
-      <h2>Lights</h2>
-      <div class="big">
-        <span id="ldr-dot" class="dot"></span>
-        <span id="headlight-label">OFF</span>
+    <section class="tile tile-wide" id="tile-camera">
+      <h2>Camera (LKA)</h2>
+      <div class="cam-row">
+        <div class="cam-col">
+          <div class="cam-label">Annotated</div>
+          <img id="video" src="/video.mjpg" alt="camera">
+        </div>
+        <div class="cam-col">
+          <div class="cam-label">Mask / edges</div>
+          <img id="edges" src="/edges.mjpg" alt="mask">
+        </div>
       </div>
-      <p>LDR: <span id="ldr-value">—</span></p>
+      <p>Bias: <span id="lane-bias">—</span> · Diff: <span id="lane-diff">—</span> · Action: <span id="lane-action">—</span></p>
       <div class="row">
-        <label>ON ≤ <input id="ldr-on" type="number" min="0" max="1023"></label>
-        <label>OFF ≥ <input id="ldr-off" type="number" min="0" max="1023"></label>
+        <label>LKA gain: <input id="lka-gain" type="number" min="0" step="1"></label>
+        <label>Deadzone: <input id="lka-deadzone" type="number" min="0" max="1" step="0.01"></label>
       </div>
     </section>
 
@@ -40,59 +46,40 @@
           <input id="throttle" type="range" min="-100" max="100" step="1" value="0">
         </div>
         <div class="col">
-          <p>Steering: <strong id="str-deg">90</strong>°</p>
-          <input id="steer" type="range" min="60" max="140" step="1" value="100">
+          <p>Steering: <strong id="str-deg">100</strong>°</p>
+          <input id="steer" type="range" min="50" max="150" step="1" value="100">
         </div>
       </div>
       <p class="muted">Keys: W/S throttle · A/D steer · Space stop+center</p>
     </section>
 
-    <section class="tile" id="tile-camera">
-      <h2>Camera (LKA)</h2>
-      <img id="video" src="/video.mjpg" alt="camera">
-      <p>Bias: <span id="lane-bias">—</span> · Diff: <span id="lane-diff">—</span> · Action: <span id="lane-action">—</span></p>
-      <label>LKA gain (°): <input id="lka-gain" type="number" min="0" max="60" step="1"></label>
+    <section class="tile" id="tile-lights">
+      <h2>Lights (LDR)</h2>
+      <div class="big">
+        <span id="ldr-dot" class="dot"></span>
+        <span id="headlight-label">OFF</span>
+      </div>
+      <p>LDR: <span id="ldr-value">—</span></p>
+      <div class="row">
+        <label>ON ≤ <input id="ldr-on" type="number" min="0" max="1023"></label>
+        <label>OFF ≥ <input id="ldr-off" type="number" min="0" max="1023"></label>
+      </div>
     </section>
 
     <section class="tile" id="tile-prox">
-      <h2>Ultrasonic (Rear)</h2>
-      <div class="bar"><span class="lbl">Rear L</span>      <progress id="bar-rear_left"   max="200"></progress> <span id="d-rear_left">—</span></div>
-      <div class="bar"><span class="lbl">Rear C</span>      <progress id="bar-rear_center" max="200"></progress> <span id="d-rear_center">—</span></div>
-      <div class="bar"><span class="lbl">Rear R</span>      <progress id="bar-rear_right"  max="200"></progress> <span id="d-rear_right">—</span></div>
+      <h2>Ultrasonic (Rear) — RCTA</h2>
+      <div class="bar"><span class="lbl">Rear L</span> <progress id="bar-rear_left"   max="200"></progress> <span id="d-rear_left">—</span></div>
+      <div class="bar"><span class="lbl">Rear C</span> <progress id="bar-rear_center" max="200"></progress> <span id="d-rear_center">—</span></div>
+      <div class="bar"><span class="lbl">Rear R</span> <progress id="bar-rear_right"  max="200"></progress> <span id="d-rear_right">—</span></div>
       <p class="row">
         <button id="backup-toggle">Backup ADAS: OFF</button>
-        <span class="muted">turns the Arduino's LEDs + buzzer on/off</span>
-      </p>
-      <p class="row">
-        <label>RCCA brake &lt; <input id="rcca-th" type="number" min="0" max="200" step="1"> cm</label>
         <span id="rcca-flag" class="alert hidden">RCCA BRAKE</span>
       </p>
       <p class="row">
+        <label>RCCA brake &lt; <input id="rcca-th" type="number" min="0" max="200" step="1"> cm</label>
         <label>RCCA test cruise: <input id="rcca-test" type="number" min="-100" max="0" step="1"> %</label>
-        <span class="muted">(applied automatically in RCCA mode)</span>
       </p>
-      <p class="muted">Rear brake is always-on in any mode whenever throttle &lt; 0.</p>
-    </section>
-
-    <section class="tile" id="tile-cal">
-      <h2>Throttle calibration</h2>
-      <table class="cal">
-        <tr><th></th><th>Forward</th><th>Reverse</th></tr>
-        <tr><td>Min µs</td>
-            <td><input id="forward_min_us" type="number"></td>
-            <td><input id="reverse_min_us" type="number"></td></tr>
-        <tr><td>Max µs</td>
-            <td><input id="forward_max_us" type="number"></td>
-            <td><input id="reverse_max_us" type="number"></td></tr>
-        <tr><td>Kick µs</td>
-            <td><input id="forward_kick_us" type="number"></td>
-            <td><input id="reverse_kick_us" type="number"></td></tr>
-        <tr><td>Kick ms</td>
-            <td><input id="forward_kick_ms" type="number"></td>
-            <td><input id="reverse_kick_ms" type="number"></td></tr>
-      </table>
-      <button id="save-cal">Save calibration</button>
-      <p class="muted">Saved to <code>config.json</code> on the host.</p>
+      <p class="muted">Rear brake is always-on whenever throttle &lt; 0.</p>
     </section>
   </main>
 

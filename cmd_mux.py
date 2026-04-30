@@ -47,6 +47,11 @@ def parse_args():
     p.add_argument("--host", default="0.0.0.0")
     p.add_argument("--port", type=int, default=8000)
     p.add_argument("--config", default=str(CONFIG_PATH))
+    p.add_argument("--lka-gain", type=float,
+                   help="Initial LKA gain (overrides config). Default 200.")
+    p.add_argument("--lka-deadzone", type=float,
+                   help="Initial LKA deadzone in [0,1] (overrides config). "
+                        "Default 0.15.")
     return p.parse_args()
 
 
@@ -70,8 +75,10 @@ def merge_ports(args, cfg: dict) -> dict:
     }
 
 
-def camera_thread(vision: LaneVision, state: SystemState, frames: FrameBuffer,
+def camera_thread(vision: LaneVision, state: SystemState,
+                  frames: FrameBuffer, frames_edges: FrameBuffer,
                   stop: threading.Event):
+    quality = [int(cv2.IMWRITE_JPEG_QUALITY), 70]
     while not stop.is_set():
         result = vision.read()
         if result is None:
@@ -81,10 +88,12 @@ def camera_thread(vision: LaneVision, state: SystemState, frames: FrameBuffer,
             state.lane_diff = result.diff
             state.lane_bias = result.bias
             state.lane_action = result.action
-        ok, jpeg = cv2.imencode(".jpg", result.annotated,
-                                [int(cv2.IMWRITE_JPEG_QUALITY), 70])
+        ok, jpeg = cv2.imencode(".jpg", result.annotated, quality)
         if ok:
             frames.update(jpeg.tobytes())
+        ok, jpeg = cv2.imencode(".jpg", result.edges, quality)
+        if ok:
+            frames_edges.update(jpeg.tobytes())
 
 
 def main():
@@ -100,7 +109,12 @@ def main():
     ldr_th = cfg.get("ldr_thresholds", {}) or {}
     state.ldr_on_threshold = int(ldr_th.get("on", 400))
     state.ldr_off_threshold = int(ldr_th.get("off", 500))
-    state.lka_gain_deg = float(cfg.get("lka_gain", 30.0))
+    state.lka_gain_deg = float(args.lka_gain
+                               if args.lka_gain is not None
+                               else cfg.get("lka_gain", 200.0))
+    state.lka_deadzone = float(args.lka_deadzone
+                               if args.lka_deadzone is not None
+                               else cfg.get("lka_deadzone", 0.15))
     state.rcca_test_throttle_pct = float(cfg.get("rcca_test_throttle_pct", -20.0))
     state.proximity_labels = list(cfg.get("proximity_labels",
                                           ["rear_left", "rear_center", "rear_right"]))
@@ -110,6 +124,7 @@ def main():
     esc = throttle = servo = ldr = proximity = vision = None
     cam_thread = stop_evt = None
     frames = FrameBuffer()
+    frames_edges = FrameBuffer()
 
     try:
         if ports["esc"]:
@@ -148,7 +163,8 @@ def main():
                 state.has_camera = True
                 stop_evt = threading.Event()
                 cam_thread = threading.Thread(
-                    target=camera_thread, args=(vision, state, frames, stop_evt),
+                    target=camera_thread,
+                    args=(vision, state, frames, frames_edges, stop_evt),
                     daemon=True,
                 )
                 cam_thread.start()
@@ -172,7 +188,7 @@ def main():
         loop.start()
 
         # ---- Web app ----
-        app = build_app(state, frames, cfg_path)
+        app = build_app(state, frames, frames_edges, cfg_path)
         print(f"\nHMI: http://{args.host}:{args.port}/  (mode = {state.mode.value})\n")
         uvicorn.run(app, host=args.host, port=args.port, log_level="info")
 

@@ -41,7 +41,8 @@ class SystemState:
     lane_diff: Optional[int] = None
     lane_bias: Optional[float] = None
     lane_action: str = "None"
-    lka_gain_deg: float = 30.0  # max servo deviation from center
+    lka_gain_deg: float = 200.0  # gain on bias->angle (clamped at servo limits)
+    lka_deadzone: float = 0.15   # |bias| inside this band -> hold center
 
     # RCCA test-mode cruise: slow auto-reverse % so the user can verify the
     # always-on rear-brake without holding the throttle slider.
@@ -49,11 +50,11 @@ class SystemState:
 
     # User commands (from HMI)
     cmd_throttle_pct: float = 0.0
-    cmd_steer_deg: int = 90
+    cmd_steer_deg: int = 100
 
     # Last applied outputs
     applied_esc_us: int = 1500
-    applied_servo_deg: int = 90
+    applied_servo_deg: int = 100
     rcca_brake: bool = False
 
     # Subsystem availability (set by cmd_mux at startup)
@@ -88,6 +89,7 @@ class SystemState:
                     "bias": self.lane_bias,
                     "action": self.lane_action,
                     "gain_deg": self.lka_gain_deg,
+                    "deadzone": self.lka_deadzone,
                 },
                 "rcca_test_throttle_pct": self.rcca_test_throttle_pct,
                 "command": {

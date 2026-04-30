@@ -3,7 +3,7 @@
 
   // ------------- WebSocket telemetry -------------
   let ws;
-  let userEditing = new Set();      // inputs the user is currently typing in
+  let userEditing = new Set();
   function connect() {
     const proto = location.protocol === "https:" ? "wss:" : "ws:";
     ws = new WebSocket(`${proto}//${location.host}/ws/state`);
@@ -14,7 +14,6 @@
 
   // ------------- Render telemetry -------------
   function render(s) {
-    // mode
     document.querySelectorAll(".mode").forEach((b) => {
       b.classList.toggle("active", b.dataset.mode === s.mode);
     });
@@ -38,6 +37,7 @@
     $("lane-diff").textContent = s.lane.diff === null ? "—" : s.lane.diff;
     $("lane-action").textContent = s.lane.action;
     setIfIdle("lka-gain", s.lane.gain_deg);
+    setIfIdle("lka-deadzone", s.lane.deadzone);
 
     // proximity
     for (const k of ["rear_left", "rear_center", "rear_right"]) {
@@ -51,18 +51,10 @@
     setIfIdle("rcca-test", s.rcca_test_throttle_pct);
     $("rcca-flag").classList.toggle("hidden", !s.applied.rcca_brake);
 
-    // backup ADAS toggle
     const bt = $("backup-toggle");
     bt.textContent = `Backup ADAS: ${s.proximity_alerts_on ? "ON" : "OFF"}`;
     bt.classList.toggle("active", s.proximity_alerts_on);
 
-    // calibration
-    for (const k of [
-      "forward_min_us", "forward_max_us", "forward_kick_us", "forward_kick_ms",
-      "reverse_min_us", "reverse_max_us", "reverse_kick_us", "reverse_kick_ms",
-    ]) setIfIdle(k, s.calibration[k]);
-
-    // disable controls for absent subsystems
     document.body.classList.toggle("no-camera", !s.availability.camera);
   }
 
@@ -117,27 +109,18 @@
     cmdSteer = Number(e.target.value); pushCommand();
   });
 
-  // Threshold + gain sliders persist via /api/thresholds on change.
   function pushThresholds() {
     postJSON("/api/thresholds", {
       ldr_on_threshold: Number($("ldr-on").value),
       ldr_off_threshold: Number($("ldr-off").value),
       rcca_threshold_cm: Number($("rcca-th").value),
       lka_gain_deg: Number($("lka-gain").value),
+      lka_deadzone: Number($("lka-deadzone").value),
       rcca_test_throttle_pct: Number($("rcca-test").value),
     });
   }
-  ["ldr-on", "ldr-off", "rcca-th", "lka-gain", "rcca-test"].forEach((id) =>
-    $(id).addEventListener("change", pushThresholds));
-
-  // Calibration save
-  $("save-cal").onclick = () => {
-    const cal = {};
-    ["forward_min_us", "forward_max_us", "forward_kick_us", "forward_kick_ms",
-     "reverse_min_us", "reverse_max_us", "reverse_kick_us", "reverse_kick_ms"]
-      .forEach((k) => { cal[k] = Number($(k).value); });
-    postJSON("/api/calibration", cal);
-  };
+  ["ldr-on", "ldr-off", "rcca-th", "lka-gain", "lka-deadzone", "rcca-test"]
+    .forEach((id) => $(id).addEventListener("change", pushThresholds));
 
   // ------------- Keybindings -------------
   const STEP_THR = 5, STEP_STR = 5;
@@ -147,8 +130,8 @@
     let changed = false;
     if (k === "w") { cmdThrottle = clamp(cmdThrottle + STEP_THR, -100, 100); changed = true; }
     else if (k === "s") { cmdThrottle = clamp(cmdThrottle - STEP_THR, -100, 100); changed = true; }
-    else if (k === "a") { cmdSteer = clamp(cmdSteer - STEP_STR, 60, 140); changed = true; }
-    else if (k === "d") { cmdSteer = clamp(cmdSteer + STEP_STR, 60, 140); changed = true; }
+    else if (k === "a") { cmdSteer = clamp(cmdSteer - STEP_STR, 50, 150); changed = true; }
+    else if (k === "d") { cmdSteer = clamp(cmdSteer + STEP_STR, 50, 150); changed = true; }
     else if (k === " ") { cmdThrottle = 0; cmdSteer = 100; changed = true; e.preventDefault(); }
     if (changed) {
       $("throttle").value = cmdThrottle;

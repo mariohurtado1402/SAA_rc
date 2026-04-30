@@ -8,7 +8,7 @@
   },
   "calibration": {
     "forward_min_us": 1580,
-    "forward_max_us": ,
+    "forward_max_us": 2000,
     "forward_kick_us": 1750,
     "forward_kick_ms": 250,
     "reverse_min_us": 1420,
@@ -19,6 +19,7 @@
   "rcca_threshold_cm": 25,
   "rcca_test_throttle_pct": -20,
   "ldr_thresholds": { "on": 400, "off": 500 },
-  "lka_gain": 30,
+  "lka_gain": 200,
+  "lka_deadzone": 0.15,
   "proximity_labels": ["rear_left", "rear_center", "rear_right"]
 }

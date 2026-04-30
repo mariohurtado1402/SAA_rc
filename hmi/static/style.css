@@ -79,8 +79,12 @@ progress { width: 100%; height: 1rem; }
 table.cal { width: 100%; border-collapse: collapse; margin-bottom: 0.5rem; }
 table.cal th, table.cal td { padding: 0.25rem; text-align: left; }
 table.cal input { width: 5rem; }
-img#video {
-  width: 100%; max-height: 360px; object-fit: contain;
+.tile-wide { grid-column: span 2; }
+.cam-row { display: flex; gap: 0.5rem; flex-wrap: wrap; }
+.cam-col { flex: 1 1 280px; min-width: 0; }
+.cam-label { font-size: 0.85rem; color: #888; margin-bottom: 0.25rem; }
+img#video, img#edges {
+  width: 100%; max-height: 420px; object-fit: contain;
   background: #000; border: 1px solid #333;
 }
 code { background: #000; padding: 0 0.25rem; border-radius: 3px; }

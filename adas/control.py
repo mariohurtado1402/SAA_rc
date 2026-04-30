@@ -8,11 +8,9 @@ import time
 from typing import Optional
 
 from helpers import (
-    ANGLE_CENTER,
-    ANGLE_MAX,
-    ANGLE_MIN,
     SerialServo,
     ThrottleController,
+    bias_to_angle,
 )
 
 from .state import Mode, SystemState
@@ -76,6 +74,7 @@ class ControlLoop:
             rcca_test_pct = s.rcca_test_throttle_pct
             lane_bias = s.lane_bias
             lka_gain = s.lka_gain_deg
+            lka_deadzone = s.lka_deadzone
 
         # 1) Headlights — hysteresis around the LDR threshold.
         # Lower ADC reading = darker, so flip MOSFET ON when value falls
@@ -103,8 +102,7 @@ class ControlLoop:
         target_steer = cmd_steer
 
         if mode is Mode.LKA and lane_bias is not None:
-            target_steer = int(round(ANGLE_CENTER + lane_bias * lka_gain))
-            target_steer = max(ANGLE_MIN, min(ANGLE_MAX, target_steer))
+            target_steer = bias_to_angle(lane_bias, lka_deadzone, lka_gain)
 
         elif mode is Mode.RCCA:
             # Test cruise: hold a slow auto-reverse so the safety brake is

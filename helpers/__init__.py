@@ -6,7 +6,7 @@ from .esc_serial import (
     PULSE_MAX,
     PULSE_NEUTRAL,
 )
-from .vision_serial import LaneVision, LaneResult
+from .vision_serial import LaneVision, LaneResult, bias_to_angle
 from .ldr_serial import SerialLDR
 from .proximity_serial import SerialProximity
 from .calibration import ThrottleCalibration
@@ -23,6 +23,7 @@ __all__ = [
     "PULSE_NEUTRAL",
     "LaneVision",
     "LaneResult",
+    "bias_to_angle",
     "SerialLDR",
     "SerialProximity",
     "ThrottleCalibration",
