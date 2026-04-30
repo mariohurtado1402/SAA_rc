@@ -31,6 +31,11 @@ class ControlLoop:
         self.proximity = proximity
         self._stop = threading.Event()
         self._thread: Optional[threading.Thread] = None
+        # Last servo angle produced from a *valid* lane bias. Reused when the
+        # lane is lost so the wheels hold their position instead of snapping
+        # back to center. Reset every time we leave LKA so the next entry
+        # starts from a clean slate.
+        self._last_lka_angle: Optional[int] = None
 
     def start(self):
         if self._thread is not None:
@@ -101,9 +106,18 @@ class ControlLoop:
         target_throttle = cmd_throttle
         target_steer = cmd_steer
 
-        if mode is Mode.LKA and lane_bias is not None:
-            target_steer = bias_to_angle(lane_bias, lka_deadzone, lka_gain)
+        if mode is not Mode.LKA:
+            self._last_lka_angle = None
 
+        if mode is Mode.LKA:
+            if lane_bias is not None:
+                target_steer = bias_to_angle(lane_bias, lka_deadzone, lka_gain)
+                self._last_lka_angle = target_steer
+            elif self._last_lka_angle is not None:
+                # Lane lost mid-drive: hold the last good angle.
+                target_steer = self._last_lka_angle
+            # else: no lane has ever been seen this LKA session, fall through
+            # to whatever the user has on the manual slider.
         elif mode is Mode.RCCA:
             # Test cruise: hold a slow auto-reverse so the safety brake is
             # exercised without the user holding the throttle slider.
